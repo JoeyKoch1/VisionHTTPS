@@ -1,30 +1,15 @@
-/*
- * src/crypto/x25519.c
- * X25519 (Curve25519 ECDH) — RFC 7748.
- *
- * Arithmetic: GF(2^255-19) using five 51-bit limbs in u64.
- * Scalar multiplication: Montgomery ladder — constant-time, no branches on secret data.
- * No externs. No libc. No dynamic allocation.
- *
- * Reference: djb's original paper + RFC 7748 §5 test vectors.
- */
 #include "x25519.h"
 #include "vision/platform.h"
 
-/* ── Field element: 5 × 51-bit limbs, little-endian ────────────────── */
 typedef struct { u64 v[5]; } Fe;
 
-/* p = 2^255 - 19 */
 #define P0 0x7ffffffffffedULL
 #define P1 0x7ffffffffffffULL
-/* all limbs 1..4 are (2^51 - 1) except limb 0 which is (2^51 - 19) */
 
 static const Fe ZERO = {{ 0, 0, 0, 0, 0 }};
 static const Fe ONE  = {{ 1, 0, 0, 0, 0 }};
 
-/* ── Load / store (little-endian 32 bytes ↔ 5×51-bit limbs) ────────── */
 static Fe fe_load(const u8 b[32]) {
-    /* Mask off top bit per RFC 7748 */
     u8 tmp[32];
     vision_memcpy(tmp, b, 32);
     tmp[31] &= 0x7f;
@@ -45,9 +30,7 @@ static Fe fe_load(const u8 b[32]) {
 }
 
 static void fe_store(const Fe* a, u8 out[32]) {
-    /* Fully reduce first */
     Fe r = *a;
-    /* Carry propagation */
     for (i32 i = 0; i < 4; i++) {
         r.v[i+1] += r.v[i] >> 51;
         r.v[i]   &= 0x7ffffffffffffULL;
@@ -60,7 +43,6 @@ static void fe_store(const Fe* a, u8 out[32]) {
         r.v[i]   &= 0x7ffffffffffffULL;
     }
 
-    /* Pack 5×51 → 4×64 */
     u64 t[4];
     t[0] = r.v[0] | (r.v[1] << 51);
     t[1] = (r.v[1] >> 13) | (r.v[2] << 38);
@@ -72,7 +54,6 @@ static void fe_store(const Fe* a, u8 out[32]) {
             out[i*8 + j] = (u8)(t[i] >> (j*8));
 }
 
-/* ── Field arithmetic ───────────────────────────────────────────────── */
 static VISION_INLINE Fe fe_add(const Fe* a, const Fe* b) {
     Fe r;
     for (i32 i = 0; i < 5; i++) r.v[i] = a->v[i] + b->v[i];
@@ -80,7 +61,6 @@ static VISION_INLINE Fe fe_add(const Fe* a, const Fe* b) {
 }
 
 static VISION_INLINE Fe fe_sub(const Fe* a, const Fe* b) {
-    /* Add 2p before subtracting to stay positive */
     static const u64 two_p[5] = {
         0xFFFFFFFFFFFDA, 0xFFFFFFFFFFFFE, 0xFFFFFFFFFFFFE,
         0xFFFFFFFFFFFFE, 0xFFFFFFFFFFFFE
@@ -90,14 +70,12 @@ static VISION_INLINE Fe fe_sub(const Fe* a, const Fe* b) {
     return r;
 }
 
-/* 128-bit multiply helper */
 typedef struct { u64 lo, hi; } U128;
 static VISION_INLINE U128 mul64(u64 a, u64 b) {
 #if defined(__SIZEOF_INT128__)
     unsigned __int128 r = (unsigned __int128)a * b;
     return (U128){ (u64)r, (u64)(r >> 64) };
 #else
-    /* Portable 64×64→128 via 32-bit halves */
     u64 al = a & 0xffffffffULL, ah = a >> 32;
     u64 bl = b & 0xffffffffULL, bh = b >> 32;
     u64 p0 = al * bl, p1 = al * bh, p2 = ah * bl, p3 = ah * bh;
@@ -110,11 +88,8 @@ static VISION_INLINE U128 mul64(u64 a, u64 b) {
 }
 
 static Fe fe_mul(const Fe* a, const Fe* b) {
-    /* Schoolbook with reduction: each ai*bj term, collect mod p */
     u64 a0=a->v[0], a1=a->v[1], a2=a->v[2], a3=a->v[3], a4=a->v[4];
     u64 b0=b->v[0], b1=b->v[1], b2=b->v[2], b3=b->v[3], b4=b->v[4];
-
-    /* 19 * upper limbs (reduces mod 2^255-19) */
     u64 b1_19 = b1*19, b2_19 = b2*19, b3_19 = b3*19, b4_19 = b4*19;
 
     U128 t0, t1, t2, t3, t4;
@@ -154,12 +129,10 @@ static Fe fe_mul(const Fe* a, const Fe* b) {
 
     #undef ADDMUL
 
-    /* Propagate carries at 51-bit boundaries */
     Fe r;
     u64 c;
     #define CARRY(I, J) c = t##I.lo >> 51; t##J.lo += c + (t##I.hi << 13); t##I.lo &= 0x7ffffffffffffULL; t##I.hi = 0
     CARRY(0, 1); CARRY(1, 2); CARRY(2, 3); CARRY(3, 4);
-    /* Final carry reduces via ×19 */
     c = t4.lo >> 51; t4.lo &= 0x7ffffffffffffULL;
     t0.lo += c * 19;
     c = t0.lo >> 51; t0.lo &= 0x7ffffffffffffULL;
@@ -174,18 +147,14 @@ static Fe fe_mul(const Fe* a, const Fe* b) {
 static VISION_INLINE Fe fe_sq(const Fe* a) { return fe_mul(a, a); }
 
 static Fe fe_mul121666(const Fe* a) {
-    /* Multiply by 121666 = (A-2)/4 for Montgomery ladder */
     Fe r;
     for (i32 i = 0; i < 5; i++) r.v[i] = a->v[i] * 121666ULL;
-    /* Carry */
     for (i32 i = 0; i < 4; i++) { r.v[i+1] += r.v[i] >> 51; r.v[i] &= 0x7ffffffffffffULL; }
     r.v[0] += (r.v[4] >> 51) * 19; r.v[4] &= 0x7ffffffffffffULL;
     return r;
 }
 
-/* fe^(p-2) mod p — modular inverse via Fermat's little theorem */
 static Fe fe_inv(const Fe* z) {
-    /* Addition chain for 2^255-21 */
     Fe z2   = fe_sq(z);
     Fe z4   = fe_sq(&z2);
     Fe z8   = fe_sq(&z4);
@@ -235,9 +204,7 @@ static Fe fe_inv(const Fe* z) {
     return fe_mul(&t, &z_5_0);
 }
 
-/* ── Constant-time conditional swap ─────────────────────────────────── */
 static VISION_INLINE void fe_cswap(Fe* a, Fe* b, u64 swap) {
-    /* swap = 0 or 1; mask = 0 or all-ones */
     u64 mask = (u64)(-(i64)swap);
     for (i32 i = 0; i < 5; i++) {
         u64 t = mask & (a->v[i] ^ b->v[i]);
@@ -246,9 +213,7 @@ static VISION_INLINE void fe_cswap(Fe* a, Fe* b, u64 swap) {
     }
 }
 
-/* ── Montgomery ladder scalar multiplication ────────────────────────── */
 static void x25519_ladder(const u8 scalar[32], const Fe* u, u8 out[32]) {
-    /* Clamp scalar per RFC 7748 */
     u8 e[32];
     vision_memcpy(e, scalar, 32);
     e[0]  &= 248;
@@ -295,9 +260,6 @@ static void x25519_ladder(const u8 scalar[32], const Fe* u, u8 out[32]) {
     fe_store(&res, out);
 }
 
-/* ── Public API ─────────────────────────────────────────────────────── */
-
-/* Curve25519 base point u=9 */
 static const u8 BASE_POINT[32] = { 9, 0 };
 
 void vision_x25519_pubkey(const u8 priv[32], u8 pub[32]) {
@@ -309,7 +271,6 @@ i32 vision_x25519(const u8 priv[32], const u8 peer[32], u8 shared[32]) {
     Fe u = fe_load(peer);
     x25519_ladder(priv, &u, shared);
 
-    /* Check for low-order point — output must not be all-zero */
     u8 diff = 0;
     for (i32 i = 0; i < 32; i++) diff |= shared[i];
     return (diff == 0) ? -1 : 0;

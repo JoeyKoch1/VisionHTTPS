@@ -21,41 +21,37 @@ typedef enum {
 } HttpMethod;
 
 typedef struct {
-    const u8* name;   /* pointer into raw buffer — NOT null-terminated */
+    const u8* name;
     usize     name_len;
     const u8* value;
     usize     value_len;
 } HttpHeader;
 
 typedef enum {
-    HTTP_PARSE_INCOMPLETE = 0,   /* need more data        */
-    HTTP_PARSE_COMPLETE   = 1,   /* full request parsed   */
-    HTTP_PARSE_ERROR      = -1,  /* malformed request     */
+    HTTP_PARSE_INCOMPLETE = 0,
+    HTTP_PARSE_COMPLETE   = 1,
+    HTTP_PARSE_ERROR      = -1,
 } HttpParseResult;
 
 typedef struct {
-    /* Request line */
     HttpMethod method;
     const u8*  path;
     usize      path_len;
-    u8         version_minor;    /* 0 = HTTP/1.0, 1 = HTTP/1.1 */
+    u8         version_minor;
 
-    /* Headers (pointers into the raw buffer) */
     HttpHeader headers[HTTP_MAX_HEADERS];
     u32        header_count;
 
-    /* Body */
     const u8*  body;
     usize      body_len;
-    usize      content_length;   /* from Content-Length header, 0 if none */
-    bool8      chunked;          /* Transfer-Encoding: chunked */
+    usize      content_length;
+    bool8      chunked;
 
-    /* Bytes consumed from the input buffer */
     usize      consumed;
 } HttpRequest;
 
 typedef struct {
-    u8    status_code_str[4];    /* "200", "404", etc. */
+    u8    status_code_str[4];
     u16   status_code;
     const char* reason;
 
@@ -70,26 +66,15 @@ typedef struct {
 extern "C" {
 #endif
 
-/*
- * Zero-copy HTTP/1.1 request parser.
- * Operates directly on the raw network buffer — no allocations.
- * All string fields in HttpRequest point into buf[0..len].
- */
 HttpParseResult vision_http_parse(const u8* buf, usize len, HttpRequest* req);
 
-/*
- * Serialize an HTTP response into dst.
- * Returns bytes written or -1 if dst_cap insufficient.
- */
 isize vision_http_respond(const HttpResponse* resp, u8* dst, usize dst_cap);
 
-/* Quick response builders */
 isize vision_http_respond_text(u16 code, const char* body,
                                 u8* dst, usize dst_cap);
 isize vision_http_respond_404(u8* dst, usize dst_cap);
 isize vision_http_respond_400(u8* dst, usize dst_cap);
 
-/* Find a header value by name (case-insensitive). Returns NULL if missing. */
 const HttpHeader* vision_http_find_header(const HttpRequest* req,
                                            const char* name);
 
@@ -97,4 +82,4 @@ const HttpHeader* vision_http_find_header(const HttpRequest* req,
 }
 #endif
 
-#endif /* VISION_HTTP_PARSER_H */
+#endif

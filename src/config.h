@@ -25,15 +25,13 @@ extern "C" {
 i32  vision_config_load(const char* path, VisionConfig* cfg);
 i32  vision_config_load_certs(VisionConfig* cfg);
 
-/* PEM → DER base64 decode */
 i32  vision_pem_decode(const u8* pem, usize pem_len,
                         u8* der_out, usize der_cap, usize* der_len);
 
-/* Internal: ASCII decimal string → u32 */
 u32  parse_u32(const u8* s, usize len);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* VISION_CONFIG_H */
+#endif

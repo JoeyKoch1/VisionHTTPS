@@ -1,7 +1,3 @@
-/*
- * platform/macos/socket.c
- * BSD socket layer for macOS — no libc, raw syscalls via syscall.S stubs
- */
 #include "vision/platform.h"
 
 extern i64 vision_syscall3(i64 nr, i64 a1, i64 a2, i64 a3);

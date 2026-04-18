@@ -1,24 +1,16 @@
-/*
- * platform/macos/kqueue.c
- * macOS kqueue-based event loop.
- * Uses raw BSD syscalls via our syscall.S stubs — no libc.
- */
 #include "vision/platform.h"
 
 #if defined(VISION_OS_MACOS)
 
 #include "../../src/net/connection.h"
 
-/* ── kqueue / kevent syscall numbers (macOS BSD) ─────────────────────── */
-#define SYS_KQUEUE       362   /* kqueue()                               */
-#define SYS_KEVENT       363   /* kevent(kq, chlist, nch, evlist, nev, ts) */
+#define SYS_KQUEUE       362
+#define SYS_KEVENT       363
 #define SYS_CLOSE   0x2000006
 
-/* EVFILT */
 #define EVFILT_READ   (-1)
 #define EVFILT_WRITE  (-2)
 
-/* EV flags */
 #define EV_ADD        0x0001
 #define EV_DELETE     0x0002
 #define EV_ENABLE     0x0004
@@ -27,17 +19,15 @@
 #define EV_ERROR      0x4000
 #define EV_CLEAR      0x0020
 
-/* struct kevent — 64-bit macOS layout */
 typedef struct {
-    u64 ident;      /* fd or signal                    */
-    i16 filter;     /* EVFILT_READ / EVFILT_WRITE      */
-    u16 flags;      /* EV_ADD | EV_ENABLE etc.         */
+    u64 ident;
+    i16 filter;
+    u16 flags;
     u32 fflags;
     i64 data;
-    void* udata;    /* user pointer                    */
+    void* udata;
 } KEvent;
 
-/* BSD syscall stubs (syscall.S) */
 extern i64 vision_syscall1(i64 nr, i64 a1);
 extern i64 vision_syscall6(i64 nr, i64 a1, i64 a2, i64 a3, i64 a4, i64 a5, i64 a6);
 
@@ -54,7 +44,6 @@ static i64 sys_kevent(i64 kq,
                             (i64)evlist, nev, (i64)timeout);
 }
 
-/* ── Listen socket (set by vision_net_init) ──────────────────────────── */
 extern vision_socket_t s_listen_fd;
 
 #define VISION_MAX_EVENTS 256
@@ -63,7 +52,6 @@ void vision_net_run(void) {
     i64 kq = sys_kqueue();
     if (kq < 0) vision_exit(1);
 
-    /* Register listen socket for read events */
     KEvent change;
     change.ident  = (u64)s_listen_fd;
     change.filter = EVFILT_READ;
@@ -82,7 +70,6 @@ void vision_net_run(void) {
             KEvent* ev = &events[i];
 
             if ((vision_socket_t)ev->ident == s_listen_fd) {
-                /* Accept all pending connections */
                 for (;;) {
                     u32 plen = 16;
                     vision_socket_t cfd = vision_socket_accept(
@@ -95,7 +82,6 @@ void vision_net_run(void) {
                     conn->fd    = cfd;
                     conn->state = CONN_STATE_TLS_SHAKE;
 
-                    /* Register conn fd for R+W events, udata = conn ptr */
                     KEvent ch[2];
                     ch[0].ident=ch[1].ident=(u64)cfd;
                     ch[0].filter=EVFILT_READ;  ch[0].flags=EV_ADD|EV_ENABLE|EV_CLEAR;
@@ -115,10 +101,10 @@ void vision_net_run(void) {
                 }
                 if (ev->filter == EVFILT_READ)  vision_conn_drain(conn);
                 if (ev->filter == EVFILT_WRITE) vision_conn_flush(conn);
-                /* TODO: dispatch to TLS/HTTP handler */
+                // TODO: dispatch to TLS/HTTP handler
             }
         }
     }
 }
 
-#endif /* VISION_OS_MACOS */
+#endif

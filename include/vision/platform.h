@@ -1,7 +1,6 @@
 #ifndef VISION_PLATFORM_H
 #define VISION_PLATFORM_H
 
-/* ── Primitive types ────────────────────────────────────────────────────── */
 typedef unsigned char      u8;
 typedef unsigned short     u16;
 typedef unsigned int       u32;
@@ -17,8 +16,6 @@ typedef u8                 bool8;
 #define VISION_TRUE  ((bool8)1)
 #define VISION_FALSE ((bool8)0)
 #define VISION_NULL  ((void*)0)
-
-/* ── Calling conventions ────────────────────────────────────────────────── */
 #if defined(VISION_OS_WIN32)
 #  define VISION_API   __declspec(dllexport)
 #  define VISION_CALL  __cdecl
@@ -27,21 +24,18 @@ typedef u8                 bool8;
 #  define VISION_CALL
 #endif
 
-/* ── Force-inline ────────────────────────────────────────────────────────── */
 #if defined(_MSC_VER)
 #  define VISION_INLINE __forceinline
 #else
 #  define VISION_INLINE __attribute__((always_inline)) inline
 #endif
 
-/* ── Unreachable ─────────────────────────────────────────────────────────── */
 #if defined(_MSC_VER)
 #  define VISION_UNREACHABLE() __assume(0)
 #else
 #  define VISION_UNREACHABLE() __builtin_unreachable()
 #endif
 
-/* ── Socket handle type ─────────────────────────────────────────────────── */
 #if defined(VISION_OS_WIN32)
    typedef u64 vision_socket_t;
 #  define VISION_INVALID_SOCKET ((vision_socket_t)(~0ULL))
@@ -50,12 +44,10 @@ typedef u8                 bool8;
 #  define VISION_INVALID_SOCKET ((vision_socket_t)(-1))
 #endif
 
-/* ── Platform I/O layer (implemented per platform) ─────────────────────── */
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Low-level socket ops — no libc wrappers, direct syscalls */
 vision_socket_t vision_socket_create(i32 af, i32 type, i32 proto);
 i32             vision_socket_bind(vision_socket_t s, const void* addr, u32 addrlen);
 i32             vision_socket_listen(vision_socket_t s, i32 backlog);
@@ -65,10 +57,8 @@ isize           vision_socket_write(vision_socket_t s, const void* buf, usize le
 i32             vision_socket_close(vision_socket_t s);
 i32             vision_socket_setnonblock(vision_socket_t s);
 
-/* OS-level exit — no atexit, no CRT teardown */
 void            vision_exit(i32 code);
 
-/* Bare memory ops — no libc memcpy/memset */
 void*           vision_memset(void* dst, i32 val, usize n);
 void*           vision_memcpy(void* dst, const void* src, usize n);
 i32             vision_memcmp(const void* a, const void* b, usize n);
@@ -77,4 +67,4 @@ i32             vision_memcmp(const void* a, const void* b, usize n);
 }
 #endif
 
-#endif /* VISION_PLATFORM_H */
+#endif

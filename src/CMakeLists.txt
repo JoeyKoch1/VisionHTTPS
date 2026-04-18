@@ -23,7 +23,6 @@ target_include_directories(vision_core PUBLIC
 
 target_link_libraries(vision_core PUBLIC vision_platform)
 
-# Main server executable
 add_executable(vision_server main.c)
 target_link_libraries(vision_server PRIVATE vision_core)
 

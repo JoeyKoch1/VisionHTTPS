@@ -1,8 +1,3 @@
-/*
- * src/mem/arena.c
- * Bump-pointer arena allocator.
- * No libc. Alignment is done with bit-masking (align must be power of 2).
- */
 #include "arena.h"
 #include "vision/platform.h"
 
@@ -14,13 +9,11 @@ void vision_arena_init(VisionArena* a, void* buf, usize size) {
 }
 
 void* vision_arena_alloc(VisionArena* a, usize n, usize align) {
-    /* align must be a power of 2 */
     usize cur     = (usize)(a->base + a->offset);
     usize aligned = (cur + (align - 1)) & ~(align - 1);
     usize new_off = (aligned - (usize)a->base) + n;
 
     if (new_off > a->size) {
-        /* Out of memory — callers must check NULL */
         return VISION_NULL;
     }
 

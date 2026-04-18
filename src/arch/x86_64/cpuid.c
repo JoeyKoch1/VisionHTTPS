@@ -1,8 +1,3 @@
-/*
- * src/arch/x86_64/cpuid.c
- * Runtime CPU feature detection.
- * Uses the CPUID instruction directly via inline asm — no <cpuid.h>.
- */
 #include "vision/platform.h"
 
 typedef struct {

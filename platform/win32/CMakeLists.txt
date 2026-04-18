@@ -8,8 +8,4 @@ add_library(vision_platform STATIC
 target_include_directories(vision_platform PUBLIC
     "${CMAKE_SOURCE_DIR}/include"
 )
-
-# On Windows we need these import libs for the NT layer.
-# Eventually we'll resolve these via GetProcAddress ourselves — no .lib at all.
-# For the bootstrap phase we allow them:
 target_link_libraries(vision_platform PRIVATE ws2_32 ntdll)

@@ -8,24 +8,14 @@
 extern "C" {
 #endif
 
-/* HMAC-SHA-256 */
 void vision_hmac_sha256(const u8*  key,  usize key_len,
                          const u8*  data, usize data_len,
                          u8         out[VISION_SHA256_DIGEST_SIZE]);
 
-/*
- * HKDF-Extract: PRK = HMAC(salt, IKM)
- * Pass salt=NULL / salt_len=0 to use a zeroed salt (RFC 5869 §2.2).
- */
 void vision_hkdf_extract(const u8*  salt, usize salt_len,
                            const u8*  ikm,  usize ikm_len,
                            u8         prk[VISION_SHA256_DIGEST_SIZE]);
 
-/*
- * HKDF-Expand: derive okm_len bytes from PRK + info.
- * Maximum okm_len = 255 × 32 bytes.
- * Returns 0 on success, -1 if okm_len exceeds limit.
- */
 i32  vision_hkdf_expand(const u8*  prk,  usize prk_len,
                           const u8*  info, usize info_len,
                           u8*        okm,  usize okm_len);
@@ -34,4 +24,4 @@ i32  vision_hkdf_expand(const u8*  prk,  usize prk_len,
 }
 #endif
 
-#endif /* VISION_CRYPTO_HMAC_H */
+#endif

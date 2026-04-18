@@ -1,11 +1,5 @@
-/*
- * platform/linux/socket.c
- * Socket operations implemented via our own syscall stubs.
- * Zero libc — zero externs except our own ASM.
- */
 #include "vision/platform.h"
 
-/* Syscall stubs from syscall.asm */
 extern i64 vision_syscall3(i64 nr, i64 a1, i64 a2, i64 a3);
 extern i64 vision_syscall4(i64 nr, i64 a1, i64 a2, i64 a3, i64 a4);
 
@@ -50,6 +44,5 @@ i32 vision_socket_close(vision_socket_t s) {
 }
 
 i32 vision_socket_setnonblock(vision_socket_t s) {
-    /* fcntl(s, F_SETFL, O_NONBLOCK) */
     return (i32)vision_syscall3(SYS_FCNTL, (i64)s, F_SETFL, O_NONBLOCK);
 }

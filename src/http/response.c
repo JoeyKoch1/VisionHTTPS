@@ -1,13 +1,6 @@
-/*
- * src/http/response.c
- * Pre-built HTTP response helpers + static file serving.
- * Static files served via sendfile (Linux) / TransmitFile (Windows) /
- * sendfile (macOS) — all via raw syscalls.
- */
 #include "parser.h"
 #include "vision/platform.h"
 
-/* ── sendfile syscall wrappers ───────────────────────────────────────── */
 #if defined(VISION_OS_LINUX)
 #  define SYS_SENDFILE  40
 #  define SYS_OPEN       2
@@ -20,12 +13,10 @@ static i64 open_file(const char* path) {
     return vision_syscall3(SYS_OPEN, (i64)path, O_RDONLY, 0);
 }
 
-/* Linux stat64 — we only need st_size at offset 48 */
 static i64 file_size(i64 fd) {
     u8 stat_buf[144];
     vision_memset(stat_buf, 0, sizeof(stat_buf));
     if (vision_syscall3(SYS_FSTAT, fd, (i64)stat_buf, 0) < 0) return -1;
-    /* st_size is at offset 48 in struct stat on Linux x86-64 */
     i64 sz;
     vision_memcpy(&sz, stat_buf + 48, 8);
     return sz;
@@ -35,7 +26,7 @@ isize vision_sendfile(vision_socket_t out_fd, const char* path) {
     i64 in_fd = open_file(path);
     if (in_fd < 0) return -1;
     i64 size = file_size(in_fd);
-    if (size <= 0) { vision_syscall3(3 /*SYS_CLOSE*/, in_fd, 0, 0); return -1; }
+    if (size <= 0) { vision_syscall3(3, in_fd, 0, 0); return -1; }
     i64 offset = 0;
     i64 sent = vision_syscall4(SYS_SENDFILE, out_fd, in_fd, (i64)&offset, size);
     vision_syscall3(3, in_fd, 0, 0);
@@ -43,7 +34,6 @@ isize vision_sendfile(vision_socket_t out_fd, const char* path) {
 }
 
 #elif defined(VISION_OS_MACOS)
-/* macOS: sendfile(fd, s, offset, len, hdtr, flags) */
 #  define SYS_SENDFILE 0x2000189
 #  define SYS_OPEN     0x2000005
 #  define SYS_FSTAT    0x2000339
@@ -64,23 +54,20 @@ isize vision_sendfile(vision_socket_t out_fd, const char* path) {
     if (in_fd < 0) return -1;
     i64 size = file_size(in_fd);
     if (size <= 0) { vision_syscall3(0x2000006, in_fd, 0, 0); return -1; }
-    /* macOS sendfile: (fd, s, offset, len*, hdtr, flags) */
     i64 offset = 0, len = size;
-    /* syscall directly — simplified */
+    // syscall directly simple for now improving later  - Joey
     (void)offset; (void)len;
-    vision_syscall3(0x2000006, in_fd, 0, 0); /* close */
+    vision_syscall3(0x2000006, in_fd, 0, 0);
     return (isize)size;
 }
 
 #elif defined(VISION_OS_WIN32)
-/* Windows: TransmitFile via GetProcAddress */
 isize vision_sendfile(vision_socket_t out_fd, const char* path) {
     (void)out_fd; (void)path;
-    return -1; /* TODO: TransmitFile */
+    return -1; // TODO: TransmitFile
 }
 #endif
 
-/* ── MIME type table ─────────────────────────────────────────────────── */
 typedef struct { const char* ext; const char* mime; } MimeEntry;
 static const MimeEntry MIME_TABLE[] = {
     { "html", "text/html; charset=utf-8"  },
@@ -103,7 +90,6 @@ static const MimeEntry MIME_TABLE[] = {
 };
 
 static const char* mime_for_path(const u8* path, usize path_len) {
-    /* Find last '.' */
     i64 dot = (i64)path_len - 1;
     while (dot >= 0 && path[dot] != '.') dot--;
     if (dot < 0) return "application/octet-stream";
@@ -121,8 +107,6 @@ static const char* mime_for_path(const u8* path, usize path_len) {
     return "application/octet-stream";
 }
 
-/* ── Static file handler ─────────────────────────────────────────────── */
-/* webroot is set once at startup */
 static char s_webroot[256];
 static usize s_webroot_len = 0;
 
@@ -135,12 +119,10 @@ void vision_http_set_webroot(const char* root) {
 }
 
 isize vision_http_serve_static(const HttpRequest* req, u8* out, usize cap) {
-    /* Build filesystem path = webroot + request path */
     static u8 path_buf[512];
     usize plen = 0;
     vision_memcpy(path_buf + plen, s_webroot, s_webroot_len); plen += s_webroot_len;
 
-    /* Sanitize: reject path traversal */
     for (usize i = 0; i < req->path_len - 1; i++) {
         if (req->path[i] == '.' && req->path[i+1] == '.') {
             return vision_http_respond_400(out, cap);
@@ -150,7 +132,6 @@ isize vision_http_serve_static(const HttpRequest* req, u8* out, usize cap) {
     vision_memcpy(path_buf + plen, req->path, copy);
     plen += copy;
 
-    /* Default to index.html for directory paths */
     if (path_buf[plen-1] == '/') {
         const char* idx = "index.html";
         usize ilen = 10;
@@ -163,12 +144,10 @@ isize vision_http_serve_static(const HttpRequest* req, u8* out, usize cap) {
 
     const char* mime = mime_for_path(req->path, req->path_len);
 
-    /* Write response headers into out */
     usize off = 0;
     const char* status = "HTTP/1.1 200 OK\r\n";
     usize sl = 17; vision_memcpy(out + off, status, sl); off += sl;
 
-    /* Content-Type */
     const char* ct_hdr = "Content-Type: ";
     usize ctl = 14; vision_memcpy(out + off, ct_hdr, ctl); off += ctl;
     usize ml = 0; while (mime[ml]) ml++;
@@ -178,8 +157,7 @@ isize vision_http_serve_static(const HttpRequest* req, u8* out, usize cap) {
     const char* svr = "Server: Vision/0.1\r\n\r\n";
     usize svl = 22; vision_memcpy(out + off, svr, svl); off += svl;
 
-    /* NOTE: actual file bytes are sent via sendfile after header flush.
-     * For simplicity in this build, read-then-write for small files. */
+    // NOTE: actual file bytes are sent via sendfile after header flush. For simplicity in this build, read-then-write for small files.
     (void)cap;
     return (isize)off;
 }

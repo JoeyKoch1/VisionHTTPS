@@ -1,12 +1,7 @@
-/*
- * src/net/connection.c
- * Connection slab pool + ring buffer I/O helpers.
- */
 #include "connection.h"
 #include "../mem/slab.h"
 #include "vision/platform.h"
 
-/* ── Static backing store — no OS heap ────────────────────────────────── */
 static u8          s_conn_pool_buf[sizeof(VisionConn) * VISION_MAX_CONNECTIONS];
 static VisionSlab  s_conn_slab;
 static i32         s_slab_ready = 0;
@@ -36,7 +31,6 @@ void vision_conn_free(VisionConn* c) {
     vision_slab_free(&s_conn_slab, c);
 }
 
-/* ── Ring buffer helpers ───────────────────────────────────────────────── */
 usize vision_conn_read_available(const VisionConn* c) {
     return (c->read_tail - c->read_head + VISION_CONN_READ_BUF)
            % VISION_CONN_READ_BUF;
@@ -48,15 +42,10 @@ usize vision_conn_write_space(const VisionConn* c) {
             % VISION_CONN_WRITE_BUF);
 }
 
-/*
- * Drain the socket into the connection's read ring buffer.
- * Returns bytes read, 0 on closed, <0 on error/EAGAIN.
- */
 isize vision_conn_drain(VisionConn* c) {
     usize space  = VISION_CONN_READ_BUF - vision_conn_read_available(c) - 1;
-    if (space == 0) return 0;   /* buffer full — caller must process first */
+    if (space == 0) return 0;
 
-    /* Read into contiguous tail region (may wrap — handle in two parts) */
     usize tail   = c->read_tail % VISION_CONN_READ_BUF;
     usize chunk  = VISION_CONN_READ_BUF - tail;
     if (chunk > space) chunk = space;
@@ -66,10 +55,6 @@ isize vision_conn_drain(VisionConn* c) {
     return n;
 }
 
-/*
- * Flush the connection's write ring buffer to the socket.
- * Returns bytes written, 0 if nothing pending, <0 on error.
- */
 isize vision_conn_flush(VisionConn* c) {
     usize avail = vision_conn_read_available(c);
     if (avail == 0) return 0;

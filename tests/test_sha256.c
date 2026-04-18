@@ -1,7 +1,3 @@
-/*
- * tests/test_sha256.c
- * SHA-256 test vectors — FIPS 180-4 / NIST CAVS.
- */
 #include "../src/crypto/sha256.h"
 #include "vision/platform.h"
 
@@ -10,7 +6,6 @@ static int bytes_eq(const u8* a, const u8* b, usize n) {
 }
 
 int test_sha256(void) {
-    /* Vector 1: SHA256("abc") */
     static const u8 msg1[] = { 'a', 'b', 'c' };
     static const u8 exp1[32] = {
         0xba,0x78,0x16,0xbf, 0x8f,0x01,0xcf,0xea,
@@ -19,7 +14,6 @@ int test_sha256(void) {
         0xb4,0x10,0xff,0x61, 0xf2,0x00,0x15,0xad,
     };
 
-    /* Vector 2: SHA256("") */
     static const u8 exp2[32] = {
         0xe3,0xb0,0xc4,0x42, 0x98,0xfc,0x1c,0x14,
         0x9a,0xfb,0xf4,0xc8, 0x99,0x6f,0xb9,0x24,
@@ -27,7 +21,6 @@ int test_sha256(void) {
         0xa4,0x95,0x99,0x1b, 0x78,0x52,0xb8,0x55,
     };
 
-    /* Vector 3: SHA256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") */
     static const u8 msg3[] =
         "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
     static const u8 exp3[32] = {
@@ -45,7 +38,7 @@ int test_sha256(void) {
     vision_sha256((const u8*)"", 0, out);
     if (!bytes_eq(out, exp2, 32)) return 2;
 
-    vision_sha256(msg3, sizeof(msg3) - 1 /* no null */, out);
+    vision_sha256(msg3, sizeof(msg3) - 1, out);
     if (!bytes_eq(out, exp3, 32)) return 3;
 
     return 0;

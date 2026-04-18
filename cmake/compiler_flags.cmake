@@ -1,9 +1,4 @@
-# cmake/compiler_flags.cmake
-# Sets strict compiler flags across all three platforms.
-# Key rule: no CRT / libc auto-linking — we provide our own entry points.
-
 if(MSVC)
-    # Windows / MSVC
     add_compile_options(
         /W4         # high warning level
         /WX         # warnings as errors
@@ -16,7 +11,6 @@ if(MSVC)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN NOMINMAX)
 
 elseif(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-    # Linux / macOS — GCC or Clang
     add_compile_options(
         -Wall -Wextra -Werror
         -fno-builtin          # no implicit libc builtins

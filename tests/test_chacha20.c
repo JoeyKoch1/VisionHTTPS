@@ -1,12 +1,7 @@
-/*
- * tests/test_chacha20.c
- * ChaCha20-Poly1305 AEAD test vectors — RFC 8439 §2.8.2.
- */
 #include "../src/crypto/chacha20.h"
 #include "vision/platform.h"
 
 int test_chacha20(void) {
-    /* RFC 8439 §2.8.2 — AEAD encryption example */
     static const u8 key[32] = {
         0x80,0x81,0x82,0x83, 0x84,0x85,0x86,0x87,
         0x88,0x89,0x8a,0x8b, 0x8c,0x8d,0x8e,0x8f,
@@ -48,7 +43,7 @@ int test_chacha20(void) {
         0x7e,0x90,0x2e,0xcb, 0xd0,0x60,0x06,0x91,
     };
 
-    usize pt_len = sizeof(plaintext) - 1; /* exclude null */
+    usize pt_len = sizeof(plaintext) - 1;
     u8 ct[200];
     u8 tag[16];
 
@@ -62,7 +57,6 @@ int test_chacha20(void) {
     if (vision_memcmp(ct, expected_ct, pt_len) != 0) return 11;
     if (vision_memcmp(tag, expected_tag, 16) != 0) return 12;
 
-    /* Round-trip: open should decrypt back to plaintext */
     u8 pt_out[200];
     rc = vision_chacha20poly1305_open(
         key, nonce,
@@ -73,7 +67,6 @@ int test_chacha20(void) {
     if (rc != 0) return 20;
     if (vision_memcmp(pt_out, plaintext, pt_len) != 0) return 21;
 
-    /* Tampered tag must fail */
     u8 bad_tag[16];
     vision_memcpy(bad_tag, tag, 16);
     bad_tag[0] ^= 0xff;
@@ -81,7 +74,7 @@ int test_chacha20(void) {
         key, nonce, aad, sizeof(aad),
         ct, pt_len, bad_tag, pt_out
     );
-    if (rc == 0) return 30; /* should have rejected */
+    if (rc == 0) return 30;
 
     return 0;
 }

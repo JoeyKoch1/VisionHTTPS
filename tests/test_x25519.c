@@ -1,14 +1,8 @@
-/*
- * tests/test_x25519.c
- * X25519 and HKDF test vectors.
- * RFC 7748 §6.1 and RFC 5869 Appendix A.
- */
 #include "../src/crypto/x25519.h"
 #include "../src/crypto/hmac.h"
 #include "vision/platform.h"
 
 int test_x25519(void) {
-    /* ── RFC 7748 §6.1 Test Vector 1 ── */
     static const u8 alice_priv[32] = {
         0x77,0x07,0x6d,0x0a, 0x73,0x18,0xa5,0x7d,
         0x3c,0x16,0xc1,0x72, 0x51,0xb2,0x66,0x45,
@@ -48,20 +42,16 @@ int test_x25519(void) {
     vision_x25519_pubkey(bob_priv, bob_pub);
     if (vision_memcmp(bob_pub, bob_pub_expected, 32) != 0) return 2;
 
-    /* DH: alice scalar * bob public */
     if (vision_x25519(alice_priv, bob_pub, shared_a) != 0) return 3;
     if (vision_memcmp(shared_a, shared_expected, 32) != 0) return 4;
 
-    /* DH: bob scalar * alice public — must match */
     if (vision_x25519(bob_priv, alice_pub, shared_b) != 0) return 5;
     if (vision_memcmp(shared_a, shared_b, 32) != 0) return 6;
 
-    /* Low-order point must be rejected */
     u8 low_order[32]; vision_memset(low_order, 0, 32);
     u8 dummy[32];
     if (vision_x25519(alice_priv, low_order, dummy) != -1) return 7;
 
-    /* ── HKDF RFC 5869 Appendix A.1 ── */
     static const u8 ikm[]  = { 0x0b,0x0b,0x0b,0x0b,0x0b,0x0b,0x0b,0x0b,
                                 0x0b,0x0b,0x0b,0x0b,0x0b,0x0b,0x0b,0x0b,
                                 0x0b,0x0b,0x0b,0x0b,0x0b,0x0b };

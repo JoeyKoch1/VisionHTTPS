@@ -1,19 +1,6 @@
-/*
- * src/config.c
- * Configuration file parser and PEM/DER certificate loader.
- * No fopen, no stdlib — all file I/O via raw platform syscalls.
- *
- * Config file format (simple key = value, # comments):
- *   port       = 8443
- *   cert       = /path/to/cert.pem
- *   key        = /path/to/key.pem
- *   backlog    = 128
- *   max_conns  = 4096
- */
 #include "config.h"
 #include "vision/platform.h"
 
-/* ── Raw file read via syscall ───────────────────────────────────────── */
 #if defined(VISION_OS_LINUX)
 #  define SYS_OPEN   2
 #  define SYS_READ   0
@@ -43,7 +30,6 @@ static isize raw_read(i64 fd, void* buf, usize n) {
 static void raw_close(i64 fd) { vision_syscall3(SYS_CLOSE, fd, 0, 0); }
 
 #elif defined(VISION_OS_WIN32)
-/* Windows: CreateFileA + ReadFile via GetProcAddress */
 static i64 raw_open(const char* path, i32 flags) {
     (void)flags;
     typedef void* (__stdcall *PfnCreateFileA)(const char*,u32,u32,void*,u32,u32,void*);
@@ -52,9 +38,9 @@ static i64 raw_open(const char* path, i32 flags) {
     PfnCreateFileA fn = (PfnCreateFileA)GetProcAddress(
         GetModuleHandleA("kernel32"), "CreateFileA");
     if (!fn) return -1;
-    void* h = fn(path, 0x80000000UL /*GENERIC_READ*/,
-                 1 /*FILE_SHARE_READ*/, (void*)0,
-                 3 /*OPEN_EXISTING*/, 0x80 /*FILE_ATTRIBUTE_NORMAL*/, (void*)0);
+    void* h = fn(path, 0x80000000UL,
+                 1, (void*)0,
+                 3, 0x80, (void*)0);
     return (i64)(usize)h;
 }
 static isize raw_read(i64 fd, void* buf, usize n) {
@@ -78,9 +64,8 @@ static void raw_close(i64 fd) {
 }
 #endif
 
-/* ── Read entire file into buffer ────────────────────────────────────── */
 static i32 read_file(const char* path, u8* buf, usize cap, usize* out_len) {
-    i64 fd = raw_open(path, 0 /*O_RDONLY*/);
+    i64 fd = raw_open(path, 0);
     if (fd < 0) return -1;
     usize total = 0;
     isize n;
@@ -91,8 +76,6 @@ static i32 read_file(const char* path, u8* buf, usize cap, usize* out_len) {
     return 0;
 }
 
-/* ── PEM decoder ─────────────────────────────────────────────────────── */
-/* Base64 decode table */
 static const i8 B64[256] = {
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
@@ -117,7 +100,7 @@ static usize b64_decode(const u8* in, usize in_len, u8* out, usize out_cap) {
     u32 acc = 0; i32 bits = 0;
     for (usize i = 0; i < in_len && out_len < out_cap; i++) {
         i8 v = B64[in[i]];
-        if (v < 0) continue;   /* skip whitespace, '=' */
+        if (v < 0) continue;
         acc  = (acc << 6) | (u8)v;
         bits += 6;
         if (bits >= 8) {
@@ -129,18 +112,15 @@ static usize b64_decode(const u8* in, usize in_len, u8* out, usize out_cap) {
     return out_len;
 }
 
-/* Decode PEM body between -----BEGIN ... ----- markers */
 i32 vision_pem_decode(const u8* pem, usize pem_len,
                        u8* der_out, usize der_cap, usize* der_len) {
-    /* Find first -----END or -----BEGIN and skip */
     const u8* p = pem;
     const u8* end = pem + pem_len;
 
     while (p < end && *p != '\n') p++;
     if (p >= end) return -1;
-    p++; /* skip first line (BEGIN ...) */
+    p++;
 
-    /* Find -----END marker */
     const u8* body_end = p;
     while (body_end + 5 < end) {
         if (body_end[0] == '-' && body_end[1] == '-') break;
@@ -151,7 +131,6 @@ i32 vision_pem_decode(const u8* pem, usize pem_len,
     return (*der_len > 0) ? 0 : -1;
 }
 
-/* ── Config parse ─────────────────────────────────────────────────────── */
 static usize cstr_len(const char* s) { usize n=0; while(s[n]) n++; return n; }
 
 static bool8 token_eq(const u8* a, usize alen, const char* b) {
@@ -177,21 +156,17 @@ i32 vision_config_load(const char* path, VisionConfig* cfg) {
     const u8* end = file_buf + file_len;
 
     while (p < end) {
-        /* Skip whitespace and comments */
         while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) p++;
         if (p >= end) break;
         if (*p == '#') { while (p < end && *p != '\n') p++; continue; }
 
-        /* Key */
         const u8* key = p;
         while (p < end && *p != '=' && *p != '\n' && *p != ' ') p++;
         usize klen = (usize)(p - key);
         while (p < end && (*p == ' ' || *p == '=')) p++;
 
-        /* Value */
         const u8* val = p;
         while (p < end && *p != '\n' && *p != '\r') p++;
-        /* Trim trailing spaces */
         const u8* val_end = p;
         while (val_end > val && (*(val_end-1) == ' ' || *(val_end-1) == '\t')) val_end--;
         usize vlen = (usize)(val_end - val);
@@ -224,7 +199,6 @@ u32 parse_u32(const u8* s, usize len) {
     return n;
 }
 
-/* Load PEM cert + key from paths in config */
 i32 vision_config_load_certs(VisionConfig* cfg) {
     static u8 cert_pem[65536], key_pem[65536];
     usize plen = 0;

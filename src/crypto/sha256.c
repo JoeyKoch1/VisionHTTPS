@@ -1,11 +1,6 @@
-/*
- * src/crypto/sha256.c
- * SHA-256 — FIPS 180-4 compliant, pure C, no libc.
- */
 #include "sha256.h"
 #include "vision/platform.h"
 
-/* ── Round constants ────────────────────────────────────────────────────── */
 static const u32 K[64] = {
     0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
     0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,

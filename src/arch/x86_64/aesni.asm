@@ -1,41 +1,17 @@
-; src/arch/x86_64/aesni.asm
-; ─────────────────────────────────────────────────────────────────────────────
-; AES-NI accelerated AES-128 and AES-256 key expansion + block encrypt.
-; These are the raw building blocks — AES-GCM mode is assembled on top
-; in src/crypto/aes_gcm.c which calls these stubs.
-;
-; Calling convention: System V AMD64 (Linux / macOS)
-;   args:  rdi, rsi, rdx, rcx, r8, r9
-;   ret:   rax
-;   saved: rbx, rbp, r12-r15
-;
-; Windows __fastcall (rcx, rdx, r8, r9) variant is handled by a thin
-; C wrapper in aes_gcm.c using VISION_OS_WIN32 ifdefs.
-;
-; NASM syntax.  Assemble with: nasm -f elf64 (Linux) or -f macho64 (macOS)
-; ─────────────────────────────────────────────────────────────────────────────
-
 %define AES128_ROUNDS  10
 %define AES256_ROUNDS  14
 
 section .text
 
-; ─────────────────────────────────────────────────────────────────────────────
-; vision_aes128_keyschedule(const u8 key[16], u8 rk_out[176])
-;   rdi = key ptr   rsi = round key output (11 × 16 bytes)
-; ─────────────────────────────────────────────────────────────────────────────
 global vision_aes128_keyschedule
 vision_aes128_keyschedule:
-    movdqu  xmm1, [rdi]         ; load 128-bit key
-    movdqu  [rsi], xmm1         ; round key 0 = key itself
+    movdqu  xmm1, [rdi]
+    movdqu  [rsi], xmm1
     add     rsi, 16
 
-    ; Macro: one round of AES-128 key expansion
-    ; aeskeygenassist extracts + rotates sub-word from xmm1 → xmm2
-    ; then we XOR with shifted versions of the previous round key.
 %macro EXPAND128 1              ; arg = RCON imm8
     aeskeygenassist xmm2, xmm1, %1
-    pshufd          xmm2, xmm2, 0xff   ; broadcast W[3] to all lanes
+    pshufd          xmm2, xmm2, 0xff
     vpslldq         xmm3, xmm1, 4
     pxor            xmm1, xmm3
     vpslldq         xmm3, xmm1, 4
@@ -59,17 +35,12 @@ vision_aes128_keyschedule:
     EXPAND128 0x36
     ret
 
-; ─────────────────────────────────────────────────────────────────────────────
-; vision_aes128_encrypt_block(const u8 rk[176], const u8 in[16], u8 out[16])
-;   rdi = round keys   rsi = plaintext   rdx = ciphertext output
-; ─────────────────────────────────────────────────────────────────────────────
 global vision_aes128_encrypt_block
 vision_aes128_encrypt_block:
-    movdqu  xmm0, [rsi]             ; load plaintext
-    movdqu  xmm1, [rdi]             ; round key 0
-    pxor    xmm0, xmm1              ; AddRoundKey(0)
+    movdqu  xmm0, [rsi]
+    movdqu  xmm1, [rdi]
+    pxor    xmm0, xmm1
 
-    ; Rounds 1-9: AESENC (SubBytes + ShiftRows + MixColumns + ARK)
 %assign rnd 1
 %rep 9
     movdqu  xmm1, [rdi + rnd * 16]
@@ -77,23 +48,18 @@ vision_aes128_encrypt_block:
     %assign rnd rnd+1
 %endrep
 
-    ; Round 10: AESENCLAST (no MixColumns)
     movdqu  xmm1, [rdi + 160]
     aesenclast xmm0, xmm1
 
     movdqu  [rdx], xmm0
     ret
 
-; ─────────────────────────────────────────────────────────────────────────────
-; vision_aes256_keyschedule(const u8 key[32], u8 rk_out[240])
-;   rdi = key   rsi = round key output (15 × 16 bytes)
-; ─────────────────────────────────────────────────────────────────────────────
 global vision_aes256_keyschedule
 vision_aes256_keyschedule:
-    movdqu  xmm1, [rdi]        ; key low  128 bits
-    movdqu  xmm3, [rdi + 16]   ; key high 128 bits
-    movdqu  [rsi],      xmm1   ; rk[0]
-    movdqu  [rsi + 16], xmm3   ; rk[1]
+    movdqu  xmm1, [rdi]
+    movdqu  xmm3, [rdi + 16]
+    movdqu  [rsi],      xmm1
+    movdqu  [rsi + 16], xmm3
     add     rsi, 32
 
 %macro EXPAND256_A 1           ; generate odd round keys from xmm1+xmm3
@@ -139,9 +105,6 @@ vision_aes256_keyschedule:
     EXPAND256_A 0x40 ; rk[14] — final, no B needed for AES-256
     ret
 
-; ─────────────────────────────────────────────────────────────────────────────
-; vision_aes256_encrypt_block(const u8 rk[240], const u8 in[16], u8 out[16])
-; ─────────────────────────────────────────────────────────────────────────────
 global vision_aes256_encrypt_block
 vision_aes256_encrypt_block:
     movdqu  xmm0, [rsi]
@@ -160,12 +123,6 @@ vision_aes256_encrypt_block:
     movdqu  [rdx], xmm0
     ret
 
-; ─────────────────────────────────────────────────────────────────────────────
-; vision_clmul_ghash_block(u8 tag[16], const u8 h[16], const u8 data[16])
-;   Galois field multiply for GHASH — the authentication core of AES-GCM.
-;   Uses PCLMULQDQ instruction.
-;   rdi = tag (in/out)   rsi = H (subkey)   rdx = data block
-; ─────────────────────────────────────────────────────────────────────────────
 global vision_clmul_ghash_block
 vision_clmul_ghash_block:
     movdqu  xmm0, [rdi]         ; current tag

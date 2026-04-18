@@ -1,11 +1,3 @@
-/* platform/macos/syscall.S
- * macOS x86-64 BSD syscall stubs.
- * macOS syscall ABI:
- *   number = Linux_nr | 0x2000000
- *   args   = rdi, rsi, rdx, r10, r8, r9
- *   return = rax (carry flag set on error)
- */
-
 #define SYS_EXIT      0x2000001
 #define SYS_READ      0x2000003
 #define SYS_WRITE     0x2000004

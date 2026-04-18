@@ -1,7 +1,3 @@
-/*
- * tests/test_runner.c
- * Zero-dependency test runner — no test framework, no externs.
- */
 #include "vision/platform.h"
 
 #if defined(VISION_OS_LINUX)
@@ -42,14 +38,12 @@ void __stdcall vision_winmain(void) {
     i32 failed = 0;
     i32 total  = (i32)(sizeof(tests)/sizeof(tests[0]));
     println("[Vision HTTPS] test suite");
-    println("─────────────────────────");
     for (i32 i = 0; i < total; i++) {
         int r = tests[i].fn();
         _write(r == 0 ? "  PASS  " : "  FAIL  ", 8);
         println(tests[i].name);
         if (r != 0) failed++;
     }
-    println("─────────────────────────");
     println(failed == 0 ? "ALL PASSED" : "SOME FAILED");
     vision_exit(failed > 0 ? 1 : 0);
 }

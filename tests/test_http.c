@@ -1,12 +1,7 @@
-/*
- * tests/test_http.c
- * HTTP/1.1 parser unit tests.
- */
 #include "../src/http/parser.h"
 #include "vision/platform.h"
 
 int test_http(void) {
-    /* ── Simple GET request ── */
     static const u8 req1[] =
         "GET /api/health HTTP/1.1\r\n"
         "Host: example.com\r\n"
@@ -24,14 +19,13 @@ int test_http(void) {
     if (r.header_count < 3) return 6;
     if (r.body_len != 0) return 7;
 
-    /* ── POST with body ── */
     static const u8 req2[] =
         "POST /echo HTTP/1.1\r\n"
         "Host: example.com\r\n"
         "Content-Type: application/json\r\n"
         "Content-Length: 15\r\n"
         "\r\n"
-        "{\"hello\":\"world\"}";  /* 17 bytes — only 15 consumed per CL */
+        "{\"hello\":\"world\"}";
 
     res = vision_http_parse(req2, sizeof(req2) - 1, &r);
     if (res != HTTP_PARSE_COMPLETE) return 10;
@@ -39,31 +33,26 @@ int test_http(void) {
     if (r.content_length != 15) return 12;
     if (r.body_len != 15) return 13;
 
-    /* ── Header lookup ── */
     const HttpHeader* ct = vision_http_find_header(&r, "content-type");
     if (!ct) return 20;
     if (vision_memcmp(ct->value, "application/json", 16) != 0) return 21;
 
-    /* Case-insensitive lookup */
     const HttpHeader* ct2 = vision_http_find_header(&r, "Content-Type");
     if (!ct2) return 22;
 
-    /* ── Incomplete request returns INCOMPLETE ── */
     static const u8 partial[] = "GET /foo HTTP/1.1\r\nHo";
     res = vision_http_parse(partial, sizeof(partial) - 1, &r);
     if (res != HTTP_PARSE_INCOMPLETE) return 30;
 
-    /* ── Bad request returns ERROR ── */
     static const u8 bad[] = "BADVERB /foo ZTTP/9.9\r\n\r\n";
     res = vision_http_parse(bad, sizeof(bad) - 1, &r);
     if (res != HTTP_PARSE_ERROR) return 40;
 
-    /* ── Path traversal in serve path check ── */
     static const u8 traversal[] =
         "GET /../../../etc/passwd HTTP/1.1\r\n\r\n";
     res = vision_http_parse(traversal, sizeof(traversal) - 1, &r);
     if (res != HTTP_PARSE_COMPLETE) return 50;
-    /* Path contains '..' — serve_static should reject but parser accepts */
+    // Path contains '..' — serve_static should reject but parser accepts
 
     return 0;
 }
