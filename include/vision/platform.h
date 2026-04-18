@@ -56,6 +56,7 @@ isize           vision_socket_read(vision_socket_t s, void* buf, usize len);
 isize           vision_socket_write(vision_socket_t s, const void* buf, usize len);
 i32             vision_socket_close(vision_socket_t s);
 i32             vision_socket_setnonblock(vision_socket_t s);
+i32             vision_socket_setsockopt(vision_socket_t s, i32 level, i32 optname, const void* optval, u32 optlen);
 
 void            vision_exit(i32 code);
 

@@ -38,7 +38,7 @@ int test_mem(void) {
     for (i32 i = 0; i < 8; i++) {
         objs[i] = (Obj*)vision_slab_alloc(&slab);
         if (!objs[i]) return 21;
-        if (objs[i]->a != 0 || objs[i]->b != 0) return 22; /* zeroed */
+        if (objs[i]->a != 0 || objs[i]->b != 0) return 22;
         objs[i]->a = (u64)i;
     }
     if (slab.in_use != 8) return 23;

@@ -3,6 +3,9 @@
 #if defined(VISION_OS_WIN32)
 
 #include "../../src/net/connection.h"
+#include "../../src/tls/handshake.h"
+#include "../../src/http/parser.h"
+#include "../../src/mem/slab.h"
 
 typedef void*  HANDLE;
 typedef u32    DWORD;
@@ -127,7 +130,80 @@ void vision_net_run(void) {
                     usize tail  = conn->read_tail % VISION_CONN_READ_BUF;
                     vision_memcpy(conn->read_buf + tail, op->buf, take);
                     conn->read_tail += take;
-                    // TODO: dispatch TLS / HTTP
+                    
+                    if (conn->state == CONN_STATE_TLS_SHAKE) {
+                        if (!conn->tls_ctx) {
+                            conn->tls_ctx = vision_slab_alloc(&s_conn_slab, sizeof(TlsHandshakeCtx));
+                            if (conn->tls_ctx) {
+                                vision_tls_hs_init((TlsHandshakeCtx*)conn->tls_ctx, VISION_NULL, 0, VISION_NULL, 0);
+                            }
+                        }
+                        if (conn->tls_ctx) {
+                            usize avail = conn->read_tail - conn->read_head;
+                            if (avail > 0) {
+                                u8 out_buf[4096];
+                                usize out_len = sizeof(out_buf);
+                                usize head = conn->read_head % VISION_CONN_READ_BUF;
+                                i32 hs_result = vision_tls_hs_consume((TlsHandshakeCtx*)conn->tls_ctx,
+                                                                       conn->read_buf + head, avail,
+                                                                       out_buf, &out_len);
+                                if (hs_result < 0) {
+                                    conn->state = CONN_STATE_CLOSING;
+                                } else {
+                                    conn->read_head += avail;
+                                    if (out_len > 0) {
+                                        usize wspace = VISION_CONN_WRITE_BUF - (conn->write_tail - conn->write_head) - 1;
+                                        usize to_copy = out_len < wspace ? out_len : wspace;
+                                        usize wtail = conn->write_tail % VISION_CONN_WRITE_BUF;
+                                        vision_memcpy(conn->write_buf + wtail, out_buf, to_copy);
+                                        conn->write_tail += to_copy;
+                                    }
+                                    if (vision_tls_hs_complete((TlsHandshakeCtx*)conn->tls_ctx)) {
+                                        conn->state = CONN_STATE_HTTP;
+                                    }
+                                }
+                            }
+                        }
+                    } else if (conn->state == CONN_STATE_HTTP) {
+                        usize avail = conn->read_tail - conn->read_head;
+                        if (avail > 0) {
+                            usize head = conn->read_head % VISION_CONN_READ_BUF;
+                            HttpRequest req;
+                            HttpParseResult pr = vision_http_parse(conn->read_buf + head, avail, &req);
+                            if (pr == HTTP_PARSE_COMPLETE) {
+                                conn->read_head += req.consumed;
+                                u8 resp_buf[4096];
+                                isize resp_len = vision_http_respond_text(200, "Hello from VisionHTTPS", resp_buf, sizeof(resp_buf));
+                                if (resp_len > 0) {
+                                    usize wspace = VISION_CONN_WRITE_BUF - (conn->write_tail - conn->write_head) - 1;
+                                    usize to_copy = (usize)resp_len < wspace ? (usize)resp_len : wspace;
+                                    usize wtail = conn->write_tail % VISION_CONN_WRITE_BUF;
+                                    vision_memcpy(conn->write_buf + wtail, resp_buf, to_copy);
+                                    conn->write_tail += to_copy;
+                                }
+                            } else if (pr == HTTP_PARSE_ERROR) {
+                                u8 resp_buf[512];
+                                isize resp_len = vision_http_respond_400(resp_buf, sizeof(resp_buf));
+                                if (resp_len > 0) {
+                                    usize wspace = VISION_CONN_WRITE_BUF - (conn->write_tail - conn->write_head) - 1;
+                                    usize to_copy = (usize)resp_len < wspace ? (usize)resp_len : wspace;
+                                    usize wtail = conn->write_tail % VISION_CONN_WRITE_BUF;
+                                    vision_memcpy(conn->write_buf + wtail, resp_buf, to_copy);
+                                    conn->write_tail += to_copy;
+                                }
+                                conn->state = CONN_STATE_CLOSING;
+                            }
+                        }
+                    } else if (conn->state == CONN_STATE_CLOSING) {
+                        vision_socket_close(conn->fd);
+                        if (conn->tls_ctx) {
+                            vision_slab_free(&s_conn_slab, conn->tls_ctx);
+                            conn->tls_ctx = VISION_NULL;
+                        }
+                        vision_conn_free(conn);
+                        continue;
+                    }
+                    
                     post_recv(iocp, conn);
                 }
                 break;

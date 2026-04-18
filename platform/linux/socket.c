@@ -11,9 +11,12 @@ extern i64 vision_syscall4(i64 nr, i64 a1, i64 a2, i64 a3, i64 a4);
 #define SYS_BIND     49
 #define SYS_LISTEN   50
 #define SYS_FCNTL    72
+#define SYS_SETSOCKOPT 54
 
 #define F_SETFL      4
 #define O_NONBLOCK   2048
+#define SOL_SOCKET   1
+#define SO_REUSEADDR 2
 
 vision_socket_t vision_socket_create(i32 af, i32 type, i32 proto) {
     return (vision_socket_t)vision_syscall3(SYS_SOCKET, af, type, proto);
@@ -45,4 +48,8 @@ i32 vision_socket_close(vision_socket_t s) {
 
 i32 vision_socket_setnonblock(vision_socket_t s) {
     return (i32)vision_syscall3(SYS_FCNTL, (i64)s, F_SETFL, O_NONBLOCK);
+}
+
+i32 vision_socket_setsockopt(vision_socket_t s, i32 level, i32 optname, const void* optval, u32 optlen) {
+    return (i32)vision_syscall3(SYS_SETSOCKOPT, (i64)s, (i64)level, (i64)optname, (i64)optval, (i64)optlen);
 }

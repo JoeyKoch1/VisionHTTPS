@@ -30,11 +30,7 @@ static const TestEntry tests[] = {
     { "x25519",    test_x25519  },
 };
 
-#if defined(VISION_OS_LINUX) || defined(VISION_OS_MACOS)
-void _start(void) {
-#elif defined(VISION_OS_WIN32)
-void __stdcall vision_winmain(void) {
-#endif
+static void run_tests(void) {
     i32 failed = 0;
     i32 total  = (i32)(sizeof(tests)/sizeof(tests[0]));
     println("[Vision HTTPS] test suite");
@@ -47,3 +43,17 @@ void __stdcall vision_winmain(void) {
     println(failed == 0 ? "ALL PASSED" : "SOME FAILED");
     vision_exit(failed > 0 ? 1 : 0);
 }
+
+#if defined(VISION_OS_LINUX) || defined(VISION_OS_MACOS)
+void _start(void) {
+    run_tests();
+}
+#elif defined(VISION_OS_WIN32)
+void __stdcall vision_winmain(void) {
+    run_tests();
+}
+int main(void) {
+    run_tests();
+    return 0;
+}
+#endif

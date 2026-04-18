@@ -21,7 +21,6 @@ static VISION_INLINE CpuidResult do_cpuid(u32 leaf, u32 subleaf) {
     return r;
 }
 
-/* Cached flags — filled once at startup */
 static u32 g_cpu_flags = 0;
 
 #define CPU_FLAG_AESNI  (1u << 0)

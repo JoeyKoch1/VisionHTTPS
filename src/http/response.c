@@ -62,9 +62,71 @@ isize vision_sendfile(vision_socket_t out_fd, const char* path) {
 }
 
 #elif defined(VISION_OS_WIN32)
+
+typedef void*  HANDLE;
+typedef u32    DWORD;
+typedef u64    ULONG_PTR;
+typedef i32    BOOL;
+typedef i64    LARGE_INTEGER;
+
+#define INVALID_HANDLE_VALUE ((HANDLE)(~(usize)0))
+#define GENERIC_READ         ((DWORD)0x80000000)
+#define OPEN_EXISTING        3
+#define FILE_ATTRIBUTE_NORMAL 0x80
+
+extern __declspec(dllimport) HANDLE __stdcall CreateFileA(const char*, DWORD, DWORD, void*, DWORD, DWORD, HANDLE);
+extern __declspec(dllimport) BOOL   __stdcall GetFileSizeEx(HANDLE, LARGE_INTEGER*);
+extern __declspec(dllimport) BOOL   __stdcall CloseHandle(HANDLE);
+extern __declspec(dllimport) i32    __stdcall WSAGetLastError(void);
+
+struct _OVERLAPPED;
+typedef BOOL (*PfnTransmitFile)(u64, HANDLE, DWORD, DWORD, struct _OVERLAPPED*, void*, DWORD);
+
+static LPVOID resolve(const char* dll, const char* fn) {
+    extern HANDLE __stdcall GetModuleHandleA(const char*);
+    extern LPVOID __stdcall GetProcAddress(HANDLE, const char*);
+    HANDLE h = GetModuleHandleA(dll);
+    if (!h) return VISION_NULL;
+    return GetProcAddress(h, fn);
+}
+
 isize vision_sendfile(vision_socket_t out_fd, const char* path) {
-    (void)out_fd; (void)path;
-    return -1; // TODO: TransmitFile
+    HANDLE hFile = CreateFileA(path, GENERIC_READ, 0, VISION_NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, VISION_NULL);
+    if (hFile == INVALID_HANDLE_VALUE) return -1;
+    
+    LARGE_INTEGER sz;
+    if (!GetFileSizeEx(hFile, &sz)) {
+        CloseHandle(hFile);
+        return -1;
+    }
+    if (sz <= 0) {
+        CloseHandle(hFile);
+        return -1;
+    }
+    
+    PfnTransmitFile pTransmitFile = (PfnTransmitFile)resolve("mswsock", "TransmitFile");
+    if (!pTransmitFile) {
+        u8 buf[8192];
+        extern __declspec(dllimport) BOOL __stdcall ReadFile(HANDLE, void*, DWORD, DWORD*, void*);
+        DWORD total_sent = 0;
+        DWORD read = 0;
+        while (ReadFile(hFile, buf, sizeof(buf), &read, VISION_NULL) && read > 0) {
+            extern i32 __stdcall send(u64, const void*, i32, i32);
+            i32 sent = send(out_fd, buf, (i32)read, 0);
+            if (sent <= 0) {
+                CloseHandle(hFile);
+                return -1;
+            }
+            total_sent += sent;
+        }
+        CloseHandle(hFile);
+        return (isize)total_sent;
+    }
+    
+    BOOL ok = pTransmitFile(out_fd, hFile, (DWORD)sz, 0, VISION_NULL, VISION_NULL, 0);
+    CloseHandle(hFile);
+    if (!ok) return -1;
+    return (isize)sz;
 }
 #endif
 
@@ -86,7 +148,7 @@ static const MimeEntry MIME_TABLE[] = {
     { "txt",  "text/plain"                },
     { "xml",  "application/xml"           },
     { "pdf",  "application/pdf"           },
-    { NULL, NULL }
+    { (const char*)0, (const char*)0 }
 };
 
 static const char* mime_for_path(const u8* path, usize path_len) {
@@ -123,7 +185,7 @@ isize vision_http_serve_static(const HttpRequest* req, u8* out, usize cap) {
     usize plen = 0;
     vision_memcpy(path_buf + plen, s_webroot, s_webroot_len); plen += s_webroot_len;
 
-    for (usize i = 0; i < req->path_len - 1; i++) {
+    for (usize i = 0; i + 1 < req->path_len; i++) {
         if (req->path[i] == '.' && req->path[i+1] == '.') {
             return vision_http_respond_400(out, cap);
         }
@@ -132,7 +194,7 @@ isize vision_http_serve_static(const HttpRequest* req, u8* out, usize cap) {
     vision_memcpy(path_buf + plen, req->path, copy);
     plen += copy;
 
-    if (path_buf[plen-1] == '/') {
+    if (plen > 0 && path_buf[plen-1] == '/') {
         const char* idx = "index.html";
         usize ilen = 10;
         if (plen + ilen < 511) {
@@ -157,7 +219,9 @@ isize vision_http_serve_static(const HttpRequest* req, u8* out, usize cap) {
     const char* svr = "Server: Vision/0.1\r\n\r\n";
     usize svl = 22; vision_memcpy(out + off, svr, svl); off += svl;
 
-    // NOTE: actual file bytes are sent via sendfile after header flush. For simplicity in this build, read-then-write for small files.
-    (void)cap;
+    if (off >= cap) return -1;
+
+    vision_sendfile(VISION_INVALID_SOCKET, (const char*)path_buf);
+
     return (isize)off;
 }

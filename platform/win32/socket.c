@@ -16,6 +16,8 @@ typedef u16      ADDRESS_FAMILY;
 #define SO_REUSEADDR_WIN   4
 #define FIONBIO_WIN        0x8004667eUL
 
+extern __declspec(dllimport) INT __stdcall setsockopt(SOCKET, INT, INT, const char*, INT);
+
 extern __declspec(dllimport) SOCKET __stdcall socket(INT, INT, INT);
 extern __declspec(dllimport) INT    __stdcall bind(SOCKET, const void*, INT);
 extern __declspec(dllimport) INT    __stdcall listen(SOCKET, INT);
@@ -71,7 +73,17 @@ i32 vision_socket_setnonblock(vision_socket_t s) {
     return ioctlsocket((SOCKET)s, FIONBIO_WIN, &mode);
 }
 
+i32 vision_socket_setsockopt(vision_socket_t s, i32 level, i32 optname, const void* optval, u32 optlen) {
+    return setsockopt((SOCKET)s, (INT)level, (INT)optname, (const char*)optval, (INT)optlen);
+}
+
+typedef u32 NTSTATUS;
+#define STATUS_SUCCESS ((NTSTATUS)0)
+#define NtCurrentProcess() ((HANDLE)(~(usize)0))
+
+extern __declspec(dllimport) NTSTATUS __stdcall NtTerminateProcess(HANDLE, NTSTATUS);
+
 void vision_exit(i32 code) {
-    __debugbreak(); // TODO: placeholder: replace with NT syscall stub
-    (void)code;
+    NtTerminateProcess(NtCurrentProcess(), (NTSTATUS)code);
+    __debugbreak();
 }

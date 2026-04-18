@@ -32,7 +32,6 @@ int test_aes_gcm(void) {
                             (const u8*)"", 0,
                             tag, (u8*)"") != 0) return 4;
 
-    /* Tampered tag must fail */
     u8 bad[16];
     vision_memcpy(bad, tag, 16);
     bad[7] ^= 0x01;

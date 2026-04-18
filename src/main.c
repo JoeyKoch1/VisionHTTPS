@@ -74,7 +74,7 @@ static int vision_init(void) {
 
 void vision_main(void) {
     if (vision_init() != 0) vision_exit(1);
-    vision_net_run();   /* blocks forever */
+    vision_net_run();
     vision_exit(0);
 }
 

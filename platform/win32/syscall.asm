@@ -12,8 +12,7 @@ ALIGN 16
 vision_nt_exit PROC
     mov     rdx, rcx
     mov     rcx, -1
-    ; TODO: patch rax with correct NtTerminateProcess syscall number at runtime
-    xor     eax, eax        ; placeholder — will be patched
+    mov     eax, 0x2C       ; NtTerminateProcess syscall number (Windows 10/11 x64)
     syscall
     int     3
 vision_nt_exit ENDP
